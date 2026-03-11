@@ -250,12 +250,26 @@ export async function downloadKwitansiPdf(data: KwitansiData) {
     const sigY = Math.max(y + 12, contentEndY - 40);
     const sigX = contentX + contentW * 0.6;
 
+    // Calculate beras equivalent value for terbilang
+    let berasEquivalent = 0;
+    entries.forEach(p => {
+      if (!p.detail) return;
+      const metode = p.detail.metode_pembayaran || (p.detail.jumlah_beras > 0 ? 'beras' : 'uang');
+      if (metode === 'beras' && (p.name === 'Zakat Fitrah' || p.name === 'Fidyah')) {
+        const jiwa = p.detail.jumlah_jiwa || 0;
+        const totalLiter = jiwa * LITER_PER_JIWA;
+        const harga = p.detail.harga_beras_per_liter || 0;
+        berasEquivalent += totalLiter * harga;
+      }
+    });
+    const grandTotal = totalUang + berasEquivalent;
+
     // Terbilang (left)
-    if (totalUang > 0) {
+    if (grandTotal > 0) {
       doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
       doc.text('Terbilang :', labelX, sigY);
       doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
-      const splitText = doc.splitTextToSize(terbilang(totalUang), contentW * 0.52);
+      const splitText = doc.splitTextToSize(terbilang(grandTotal), contentW * 0.52);
       doc.text(splitText, labelX + 25, sigY);
     }
 

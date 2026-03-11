@@ -240,12 +240,27 @@ export default function KwitansiZakat({ open, onOpenChange, data }: Props) {
                   <div style={{ display: 'grid', gridTemplateColumns: '58% 42%', marginTop: '24px', gap: '16px', alignItems: 'end' }}>
                     {/* Kiri: Terbilang */}
                     <div>
-                      {totalUang > 0 && (
-                        <div style={{ fontSize: '13px' }}>
-                          <span>Terbilang : </span>
-                          <strong style={{ fontStyle: 'italic' }}>{terbilang(totalUang)}</strong>
-                        </div>
-                      )}
+                      {(() => {
+                        // Calculate total value including beras equivalent
+                        const berasEquivalent = payments.reduce((s, p) => {
+                          if (!p.detail) return s;
+                          const metode = p.detail.metode_pembayaran || (p.detail.jumlah_beras > 0 ? 'beras' : 'uang');
+                          if (metode === 'beras' && (p.name === 'Zakat Fitrah' || p.name === 'Fidyah')) {
+                            const jiwa = p.detail.jumlah_jiwa || 0;
+                            const totalLiter = jiwa * LITER_PER_JIWA;
+                            const harga = p.detail.harga_beras_per_liter || 0;
+                            return s + (totalLiter * harga);
+                          }
+                          return s;
+                        }, 0);
+                        const grandTotal = totalUang + berasEquivalent;
+                        return grandTotal > 0 ? (
+                          <div style={{ fontSize: '13px' }}>
+                            <span>Terbilang : </span>
+                            <strong style={{ fontStyle: 'italic' }}>{terbilang(grandTotal)}</strong>
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
 
                     {/* Kanan: Tanggal & Tanda Tangan */}
