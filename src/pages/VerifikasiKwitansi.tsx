@@ -66,7 +66,7 @@ export default function VerifikasiKwitansi() {
   const details = data.detail_zakat || [];
   const totalUang = details.reduce((s: number, d: any) => s + (Number(d.jumlah_uang) || 0), 0);
   const totalBeras = details.reduce((s: number, d: any) => s + (Number(d.jumlah_beras) || 0), 0);
-  const totalJiwa = details.find((d: any) => d.jenis_zakat === 'Zakat Fitrah')?.jumlah_jiwa || 0;
+  const totalJiwa = details.reduce((s: number, d: any) => s + (Number(d.jumlah_jiwa) || 0), 0);
   const panitia = data.profiles?.name || 'Panitia Zakat';
 
   return (

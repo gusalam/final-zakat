@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Printer, Download } from 'lucide-react';
 import { terbilang } from '@/lib/terbilang';
 import logoImg from '@/assets/logo-masjid.webp';
@@ -155,7 +156,8 @@ export default function KwitansiZakat({ open, onOpenChange, data }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] md:max-w-5xl p-2 md:p-6 overflow-auto max-h-[90vh]">
+      <DialogContent className="max-w-[95vw] md:max-w-5xl p-2 md:p-6 overflow-auto max-h-[90vh]" aria-describedby={undefined}>
+        <VisuallyHidden><DialogTitle>Kwitansi Zakat</DialogTitle></VisuallyHidden>
         <div className="flex gap-2 justify-end mb-2 print:hidden">
           <Button size="sm" variant="outline" onClick={handlePrint}><Printer className="w-4 h-4 mr-1" />Cetak</Button>
           <Button size="sm" onClick={handleDownloadPdf}><Download className="w-4 h-4 mr-1" />Download PDF</Button>

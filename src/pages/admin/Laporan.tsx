@@ -78,7 +78,7 @@ export default function Laporan() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Only fetch global stats if no panitia filter (RPC doesn't support created_by filter)
+        // Fetch global stats (used when no panitia filter)
         if (selectedPanitia === 'all') {
           await fetchStats(startDate, endDate);
         }
@@ -104,45 +104,6 @@ export default function Laporan() {
         if (zResult.error) throw zResult.error; if (dResult.error) throw dResult.error;
         setZakatData(zResult.data || []); zakatPag.setTotalCount(zResult.count || 0);
         setDistribusiData(dResult.data || []); distPag.setTotalCount(dResult.count || 0);
-
-        // When panitia filter is active, calculate stats from ALL matching data (not just current page)
-        if (selectedPanitia !== 'all') {
-          let allZq = supabase.from('transaksi_zakat').select('detail_zakat(jenis_zakat, jumlah_uang, jumlah_beras, jumlah_jiwa)').eq('created_by', selectedPanitia);
-          if (startDate) allZq = allZq.gte('tanggal', startDate);
-          if (endDate) allZq = allZq.lte('tanggal', endDate);
-          const { data: allZ } = await allZq;
-          if (allZ) {
-            let totalFitrah = 0, totalMal = 0, totalInfaq = 0, totalFidyah = 0;
-            let totalBerasFitrah = 0, totalBerasFidyah = 0, totalJiwaFitrah = 0;
-            const muzakkiNames = new Set<string>();
-            
-            // Also get nama_muzakki for counting
-            let countQ = supabase.from('transaksi_zakat').select('nama_muzakki').eq('created_by', selectedPanitia);
-            if (startDate) countQ = countQ.gte('tanggal', startDate);
-            if (endDate) countQ = countQ.lte('tanggal', endDate);
-            const { data: countData } = await countQ;
-            countData?.forEach(t => muzakkiNames.add(t.nama_muzakki));
-
-            allZ.forEach((t: any) => {
-              (t.detail_zakat || []).forEach((d: any) => {
-                const uang = Number(d.jumlah_uang) || 0;
-                const beras = Number(d.jumlah_beras) || 0;
-                const jiwa = Number(d.jumlah_jiwa) || 0;
-                switch (d.jenis_zakat) {
-                  case 'Zakat Fitrah': totalFitrah += uang; totalBerasFitrah += beras; totalJiwaFitrah += jiwa; break;
-                  case 'Zakat Mal': totalMal += uang; break;
-                  case 'Infaq': case 'Shodaqoh': totalInfaq += uang; break;
-                  case 'Fidyah': totalFidyah += uang; totalBerasFidyah += beras; break;
-                }
-              });
-            });
-
-            // We need to manually set stats since we can't use the RPC
-            // Using a workaround: dispatch stats directly
-            await fetchStats(startDate, endDate);
-            // Override with panitia-specific values - we'll use a local override approach
-          }
-        }
       } catch (err) { toast({ title: 'Gagal memuat data', description: friendlyError(err), variant: 'destructive' }); }
     };
     fetchData();
