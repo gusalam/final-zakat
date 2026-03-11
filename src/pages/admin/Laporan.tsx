@@ -4,8 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 import AdminLayout from '@/components/layouts/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileText, Users } from 'lucide-react';
 import SearchInput from '@/components/SearchInput';
 import * as XLSX from 'xlsx';
 import { exportPdf } from '@/lib/exportPdf';
@@ -23,6 +24,11 @@ const COLORS = ['hsl(152, 55%, 28%)', 'hsl(42, 80%, 55%)', 'hsl(200, 70%, 50%)',
 
 const getAlamatLabel = (rt?: string, alamat?: string) => [rt, alamat].filter(Boolean).join(' — ');
 
+interface PanitiaOption {
+  id: string;
+  name: string;
+}
+
 export default function Laporan() {
   const { stats, fetchStats } = useZakatStats();
   const [zakatData, setZakatData] = useState<any[]>([]);
@@ -36,27 +42,172 @@ export default function Laporan() {
   const zakatPag = usePagination(50);
   const distPag = usePagination(50);
 
+  // Panitia filter
+  const [panitiaList, setPanitiaList] = useState<PanitiaOption[]>([]);
+  const [selectedPanitia, setSelectedPanitia] = useState<string>('all');
+
+  // Fetch panitia list
+  useEffect(() => {
+    const fetchPanitia = async () => {
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .in('role', ['panitia', 'admin']);
+      if (!roles) return;
+      const userIds = roles.map(r => r.user_id);
+      if (userIds.length === 0) return;
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, name')
+        .in('id', userIds)
+        .order('name');
+      if (profiles) {
+        setPanitiaList(profiles.map(p => ({ id: p.id, name: p.name })));
+      }
+    };
+    fetchPanitia();
+  }, []);
+
+  const selectedPanitiaName = selectedPanitia === 'all'
+    ? 'Semua Panitia'
+    : panitiaList.find(p => p.id === selectedPanitia)?.name || 'Panitia';
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        await fetchStats(startDate, endDate);
+        // Only fetch global stats if no panitia filter (RPC doesn't support created_by filter)
+        if (selectedPanitia === 'all') {
+          await fetchStats(startDate, endDate);
+        }
+
         const distJoin = debouncedSearchDist.trim() ? 'mustahik!inner(nama, alamat, rt(nama_rt))' : 'mustahik(nama, alamat, rt(nama_rt))';
         let zq = supabase.from('transaksi_zakat').select('*, rt(nama_rt), detail_zakat(*)', { count: 'exact' }).order('tanggal', { ascending: false });
         let dq = supabase.from('distribusi').select(`*, ${distJoin}`, { count: 'exact' }).order('tanggal', { ascending: false });
+
         if (startDate) { zq = zq.gte('tanggal', startDate); dq = dq.gte('tanggal', startDate); }
         if (endDate) { zq = zq.lte('tanggal', endDate); dq = dq.lte('tanggal', endDate); }
         if (debouncedSearchZakat.trim()) zq = zq.ilike('nama_muzakki', `%${debouncedSearchZakat.trim()}%`);
         if (debouncedSearchDist.trim()) dq = dq.ilike('mustahik.nama', `%${debouncedSearchDist.trim()}%`);
+
+        // Apply panitia filter
+        if (selectedPanitia !== 'all') {
+          zq = zq.eq('created_by', selectedPanitia);
+          dq = dq.eq('created_by', selectedPanitia);
+        }
+
         const [zResult, dResult] = await Promise.all([zq.range(zakatPag.from, zakatPag.to), dq.range(distPag.from, distPag.to)]);
         if (zResult.error?.message?.includes('range not satisfiable')) { zakatPag.goTo(1); return; }
         if (dResult.error?.message?.includes('range not satisfiable')) { distPag.goTo(1); return; }
         if (zResult.error) throw zResult.error; if (dResult.error) throw dResult.error;
         setZakatData(zResult.data || []); zakatPag.setTotalCount(zResult.count || 0);
         setDistribusiData(dResult.data || []); distPag.setTotalCount(dResult.count || 0);
+
+        // When panitia filter is active, calculate stats from ALL matching data (not just current page)
+        if (selectedPanitia !== 'all') {
+          let allZq = supabase.from('transaksi_zakat').select('detail_zakat(jenis_zakat, jumlah_uang, jumlah_beras, jumlah_jiwa)').eq('created_by', selectedPanitia);
+          if (startDate) allZq = allZq.gte('tanggal', startDate);
+          if (endDate) allZq = allZq.lte('tanggal', endDate);
+          const { data: allZ } = await allZq;
+          if (allZ) {
+            let totalFitrah = 0, totalMal = 0, totalInfaq = 0, totalFidyah = 0;
+            let totalBerasFitrah = 0, totalBerasFidyah = 0, totalJiwaFitrah = 0;
+            const muzakkiNames = new Set<string>();
+            
+            // Also get nama_muzakki for counting
+            let countQ = supabase.from('transaksi_zakat').select('nama_muzakki').eq('created_by', selectedPanitia);
+            if (startDate) countQ = countQ.gte('tanggal', startDate);
+            if (endDate) countQ = countQ.lte('tanggal', endDate);
+            const { data: countData } = await countQ;
+            countData?.forEach(t => muzakkiNames.add(t.nama_muzakki));
+
+            allZ.forEach((t: any) => {
+              (t.detail_zakat || []).forEach((d: any) => {
+                const uang = Number(d.jumlah_uang) || 0;
+                const beras = Number(d.jumlah_beras) || 0;
+                const jiwa = Number(d.jumlah_jiwa) || 0;
+                switch (d.jenis_zakat) {
+                  case 'Zakat Fitrah': totalFitrah += uang; totalBerasFitrah += beras; totalJiwaFitrah += jiwa; break;
+                  case 'Zakat Mal': totalMal += uang; break;
+                  case 'Infaq': case 'Shodaqoh': totalInfaq += uang; break;
+                  case 'Fidyah': totalFidyah += uang; totalBerasFidyah += beras; break;
+                }
+              });
+            });
+
+            // We need to manually set stats since we can't use the RPC
+            // Using a workaround: dispatch stats directly
+            await fetchStats(startDate, endDate);
+            // Override with panitia-specific values - we'll use a local override approach
+          }
+        }
       } catch (err) { toast({ title: 'Gagal memuat data', description: friendlyError(err), variant: 'destructive' }); }
     };
     fetchData();
-  }, [zakatPag.page, distPag.page, startDate, endDate, debouncedSearchZakat, debouncedSearchDist]);
+  }, [zakatPag.page, distPag.page, startDate, endDate, debouncedSearchZakat, debouncedSearchDist, selectedPanitia]);
+
+  // Calculate panitia-specific stats from data when filter active
+  const [panitiaStats, setPanitiaStats] = useState<any>(null);
+  
+  useEffect(() => {
+    if (selectedPanitia === 'all') {
+      setPanitiaStats(null);
+      return;
+    }
+    const calcStats = async () => {
+      let allZq = supabase.from('transaksi_zakat').select('nama_muzakki, detail_zakat(jenis_zakat, jumlah_uang, jumlah_beras, jumlah_jiwa)').eq('created_by', selectedPanitia);
+      if (startDate) allZq = allZq.gte('tanggal', startDate);
+      if (endDate) allZq = allZq.lte('tanggal', endDate);
+      const { data: allZ, count } = await allZq;
+      
+      if (!allZ) { setPanitiaStats(null); return; }
+
+      let totalFitrah = 0, totalMal = 0, totalInfaq = 0, totalFidyah = 0;
+      let totalBerasFitrah = 0, totalBerasFidyah = 0, totalJiwaFitrah = 0;
+      const muzakkiNames = new Set<string>();
+
+      allZ.forEach((t: any) => {
+        muzakkiNames.add(t.nama_muzakki);
+        (t.detail_zakat || []).forEach((d: any) => {
+          const uang = Number(d.jumlah_uang) || 0;
+          const beras = Number(d.jumlah_beras) || 0;
+          const jiwa = Number(d.jumlah_jiwa) || 0;
+          switch (d.jenis_zakat) {
+            case 'Zakat Fitrah': totalFitrah += uang; totalBerasFitrah += beras; totalJiwaFitrah += jiwa; break;
+            case 'Zakat Mal': totalMal += uang; break;
+            case 'Infaq': case 'Shodaqoh': totalInfaq += uang; break;
+            case 'Fidyah': totalFidyah += uang; totalBerasFidyah += beras; break;
+          }
+        });
+      });
+
+      setPanitiaStats({
+        totalFitrah, totalMal, totalInfaq, totalFidyah,
+        totalZakat: totalFitrah + totalMal + totalInfaq + totalFidyah,
+        totalBerasFitrah, totalBerasFidyah,
+        totalBeras: totalBerasFitrah + totalBerasFidyah,
+        totalJiwaFitrah,
+        totalMuzakki: muzakkiNames.size,
+        totalZakatCount: allZ.length,
+      });
+    };
+    calcStats();
+  }, [selectedPanitia, startDate, endDate]);
+
+  // Use panitia stats when filtered, otherwise global stats
+  const displayStats = panitiaStats && selectedPanitia !== 'all' ? {
+    ...stats,
+    totalFitrah: panitiaStats.totalFitrah,
+    totalMal: panitiaStats.totalMal,
+    totalInfaq: panitiaStats.totalInfaq,
+    totalFidyah: panitiaStats.totalFidyah,
+    totalZakat: panitiaStats.totalZakat,
+    totalBerasFitrah: panitiaStats.totalBerasFitrah,
+    totalBerasFidyah: panitiaStats.totalBerasFidyah,
+    totalBeras: panitiaStats.totalBeras,
+    totalJiwaFitrah: panitiaStats.totalJiwaFitrah,
+    totalMuzakki: panitiaStats.totalMuzakki,
+    totalZakatCount: panitiaStats.totalZakatCount,
+  } : stats;
 
   const fmt = (n: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n);
   const filterLabel = startDate && endDate
@@ -68,8 +219,8 @@ export default function Laporan() {
   const getBeras = (t: any) => (t.detail_zakat || []).reduce((s: number, d: any) => s + (Number(d.jumlah_beras) || 0), 0);
 
   const pieData = [
-    { name: 'Zakat Fitrah', value: stats.totalFitrah }, { name: 'Zakat Mal', value: stats.totalMal },
-    { name: 'Infaq', value: stats.totalInfaq }, { name: 'Fidyah', value: stats.totalFidyah },
+    { name: 'Zakat Fitrah', value: displayStats.totalFitrah }, { name: 'Zakat Mal', value: displayStats.totalMal },
+    { name: 'Infaq', value: displayStats.totalInfaq }, { name: 'Fidyah', value: displayStats.totalFidyah },
   ].filter(d => d.value > 0);
 
   const rtMap: Record<string, number> = {};
@@ -79,7 +230,7 @@ export default function Laporan() {
   const exportExcel = () => {
     const zakatSheet = zakatData.map(t => ({ 'Nama Muzakki': t.nama_muzakki, 'Alamat': getAlamatLabel(t.rt?.nama_rt, t.alamat_muzakki) || '-', 'Jenis': getJenis(t), 'Jumlah Uang': getUang(t), 'Jumlah Beras': getBeras(t), 'Tanggal': t.tanggal }));
     const distSheet = distribusiData.map(d => ({ 'Nama Mustahik': d.mustahik?.nama || '-', 'Alamat': getAlamatLabel(d.mustahik?.rt?.nama_rt, d.mustahik?.alamat) || '-', 'Jenis': d.jenis_bantuan || 'Uang', 'Jumlah Uang': d.jenis_bantuan === 'Beras' ? 0 : Number(d.jumlah), 'Jumlah Beras (Liter)': d.jenis_bantuan === 'Beras' ? Number(d.jumlah_beras) : 0, 'Tanggal': d.tanggal }));
-    const summarySheet = [{ Keterangan: 'Periode', Jumlah: filterLabel }, { Keterangan: 'Zakat Fitrah', Jumlah: stats.totalFitrah }, { Keterangan: 'Zakat Mal', Jumlah: stats.totalMal }, { Keterangan: 'Infaq', Jumlah: stats.totalInfaq }, { Keterangan: 'Fidyah', Jumlah: stats.totalFidyah }];
+    const summarySheet = [{ Keterangan: 'Periode', Jumlah: filterLabel }, { Keterangan: 'Panitia', Jumlah: selectedPanitiaName }, { Keterangan: 'Zakat Fitrah', Jumlah: displayStats.totalFitrah }, { Keterangan: 'Zakat Mal', Jumlah: displayStats.totalMal }, { Keterangan: 'Infaq', Jumlah: displayStats.totalInfaq }, { Keterangan: 'Fidyah', Jumlah: displayStats.totalFidyah }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summarySheet), 'Ringkasan');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(zakatSheet), 'Data Zakat');
@@ -98,24 +249,45 @@ export default function Laporan() {
     <AdminLayout>
       <div className="flex flex-col gap-4 mb-6">
         <h1 className="text-xl sm:text-2xl font-serif font-bold">Laporan</h1>
-        <DateRangeFilter
-          startDate={startDate}
-          endDate={endDate}
-          onStartDateChange={d => { setStartDate(d); zakatPag.goTo(1); distPag.goTo(1); }}
-          onEndDateChange={d => { setEndDate(d); zakatPag.goTo(1); distPag.goTo(1); }}
-        />
+        <div className="flex flex-col sm:flex-row gap-3">
+          <DateRangeFilter
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={d => { setStartDate(d); zakatPag.goTo(1); distPag.goTo(1); }}
+            onEndDateChange={d => { setEndDate(d); zakatPag.goTo(1); distPag.goTo(1); }}
+          />
+          {/* Filter Panitia */}
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-muted-foreground shrink-0" />
+            <Select value={selectedPanitia} onValueChange={v => { setSelectedPanitia(v); zakatPag.goTo(1); distPag.goTo(1); }}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Pilih Panitia" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Panitia</SelectItem>
+                {panitiaList.map(p => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={exportCSV}><Download className="w-4 h-4 mr-1" />CSV</Button>
           <Button variant="outline" size="sm" onClick={exportExcel}><Download className="w-4 h-4 mr-1" />Excel</Button>
-          <Button variant="outline" size="sm" onClick={() => exportPdf({ title: 'Laporan Zakat — Masjid Al-Ikhlas', subtitle: `Periode: ${filterLabel}`, headers: ['Nama', 'Alamat', 'Jenis', 'Uang', 'Beras', 'Tanggal'], rows: zakatData.map(t => [t.nama_muzakki, getAlamatLabel(t.rt?.nama_rt, t.alamat_muzakki) || '-', getJenis(t), fmt(getUang(t)), `${getBeras(t)}`, new Date(t.tanggal).toLocaleDateString('id-ID')]), filename: `Laporan_Zakat_${filterLabel.replace(/\s/g, '_')}.pdf`, orientation: 'landscape' })}><FileText className="w-4 h-4 mr-1" />PDF Zakat</Button>
-          <Button size="sm" onClick={() => exportPdf({ title: 'Laporan Distribusi — Masjid Al-Ikhlas', subtitle: `Periode: ${filterLabel}`, headers: ['Mustahik', 'Alamat', 'Jenis', 'Jumlah', 'Tanggal'], rows: distribusiData.map(d => [d.mustahik?.nama || '-', getAlamatLabel(d.mustahik?.rt?.nama_rt, d.mustahik?.alamat) || '-', d.jenis_bantuan || 'Uang', d.jenis_bantuan === 'Beras' ? `${Number(d.jumlah_beras) || 0} Liter` : fmt(Number(d.jumlah)), new Date(d.tanggal).toLocaleDateString('id-ID')]), filename: `Laporan_Distribusi_${filterLabel.replace(/\s/g, '_')}.pdf` })}><FileText className="w-4 h-4 mr-1" />PDF Distribusi</Button>
+          <Button variant="outline" size="sm" onClick={() => exportPdf({ title: 'Laporan Zakat — Masjid Al-Ikhlas', subtitle: `Periode: ${filterLabel} | Panitia: ${selectedPanitiaName}`, headers: ['Nama', 'Alamat', 'Jenis', 'Uang', 'Beras', 'Tanggal'], rows: zakatData.map(t => [t.nama_muzakki, getAlamatLabel(t.rt?.nama_rt, t.alamat_muzakki) || '-', getJenis(t), fmt(getUang(t)), `${getBeras(t)}`, new Date(t.tanggal).toLocaleDateString('id-ID')]), filename: `Laporan_Zakat_${filterLabel.replace(/\s/g, '_')}.pdf`, orientation: 'landscape' })}><FileText className="w-4 h-4 mr-1" />PDF Zakat</Button>
+          <Button size="sm" onClick={() => exportPdf({ title: 'Laporan Distribusi — Masjid Al-Ikhlas', subtitle: `Periode: ${filterLabel} | Panitia: ${selectedPanitiaName}`, headers: ['Mustahik', 'Alamat', 'Jenis', 'Jumlah', 'Tanggal'], rows: distribusiData.map(d => [d.mustahik?.nama || '-', getAlamatLabel(d.mustahik?.rt?.nama_rt, d.mustahik?.alamat) || '-', d.jenis_bantuan || 'Uang', d.jenis_bantuan === 'Beras' ? `${Number(d.jumlah_beras) || 0} Liter` : fmt(Number(d.jumlah)), new Date(d.tanggal).toLocaleDateString('id-ID')]), filename: `Laporan_Distribusi_${filterLabel.replace(/\s/g, '_')}.pdf` })}><FileText className="w-4 h-4 mr-1" />PDF Distribusi</Button>
         </div>
       </div>
 
-      {(startDate || endDate) && <p className="text-sm text-muted-foreground mb-4">Menampilkan data periode: <span className="font-medium text-foreground">{filterLabel}</span></p>}
+      {/* Info bar */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mb-4">
+        <span>Menampilkan data dari: <span className="font-medium text-foreground">{selectedPanitiaName}</span></span>
+        {(startDate || endDate) && <span>| Periode: <span className="font-medium text-foreground">{filterLabel}</span></span>}
+      </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        {[{ label: 'Zakat Fitrah', value: fmt(stats.totalFitrah) }, { label: 'Zakat Mal', value: fmt(stats.totalMal) }, { label: 'Infaq', value: fmt(stats.totalInfaq) }, { label: 'Fidyah', value: fmt(stats.totalFidyah) }, { label: 'Total Muzakki', value: stats.totalMuzakki.toString() }, { label: 'Jiwa Fitrah', value: `${stats.totalJiwaFitrah} Orang` }, { label: 'Beras Fitrah', value: `${stats.totalBerasFitrah} Liter` }, { label: 'Beras Fidyah', value: `${stats.totalBerasFidyah} Liter` }, { label: 'Total Beras', value: `${stats.totalBeras} Liter` }].map(s => (
+        {[{ label: 'Zakat Fitrah', value: fmt(displayStats.totalFitrah) }, { label: 'Zakat Mal', value: fmt(displayStats.totalMal) }, { label: 'Infaq', value: fmt(displayStats.totalInfaq) }, { label: 'Fidyah', value: fmt(displayStats.totalFidyah) }, { label: 'Total Muzakki', value: displayStats.totalMuzakki.toString() }, { label: 'Jiwa Fitrah', value: `${displayStats.totalJiwaFitrah} Orang` }, { label: 'Beras Fitrah', value: `${displayStats.totalBerasFitrah} Liter` }, { label: 'Beras Fidyah', value: `${displayStats.totalBerasFidyah} Liter` }, { label: 'Total Beras', value: `${displayStats.totalBeras} Liter` }].map(s => (
           <Card key={s.label} className="hover:shadow-md transition-shadow"><CardContent className="p-4 sm:p-5 min-h-[100px] sm:min-h-[110px]"><p className="text-sm sm:text-base text-muted-foreground mb-2">{s.label}</p><p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold tabular-nums">{s.value}</p></CardContent></Card>
         ))}
       </div>
