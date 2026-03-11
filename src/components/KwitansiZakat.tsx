@@ -58,7 +58,8 @@ function renderFitrahFidyahInfo(d: DetailZakatItem) {
   if (metode === 'beras') {
     return {
       label: `(Beras)`,
-      amount: `${totalLiter} Liter`,
+      jiwa: jiwa > 0 ? `Jumlah Jiwa: ${jiwa}` : undefined,
+      amount: `${totalLiter} Liter Beras`,
       extra: `${jiwa} Jiwa × 3,5 Liter`,
       harga: harga > 0 ? `Harga Beras: Rp ${fmt(harga)} / Liter` : undefined,
       nilaiSetara: harga > 0 ? `Nilai Setara: Rp ${fmt(nilaiSetara)}` : undefined,
@@ -67,8 +68,9 @@ function renderFitrahFidyahInfo(d: DetailZakatItem) {
     const setaraLiter = harga > 0 ? d.jumlah_uang / harga : 0;
     return {
       label: `(Uang)`,
+      jiwa: jiwa > 0 ? `Jumlah Jiwa: ${jiwa}` : undefined,
       amount: `Rp ${fmt(d.jumlah_uang)}`,
-      extra: harga > 0 ? `Setara Beras: ${parseFloat(setaraLiter.toFixed(2))} Liter` : undefined,
+      extra: harga > 0 ? `Setara: ${parseFloat(setaraLiter.toFixed(2))} Liter Beras` : undefined,
       harga: harga > 0 ? `Harga Beras: Rp ${fmt(harga)} / Liter` : undefined,
     };
   }
@@ -187,7 +189,7 @@ export default function KwitansiZakat({ open, onOpenChange, data }: Props) {
                                   <td colSpan={7} style={{ padding: '6px 0' }}>
                                     <div style={{ fontSize: '14px' }}><strong>{p.no}. {p.name} {info.label}</strong></div>
                                     <div style={{ marginLeft: '20px', marginTop: '4px' }}>
-                                      {p.detail.jumlah_jiwa > 0 && <div style={{ fontSize: '14px' }}>Jumlah Jiwa: <strong>{p.detail.jumlah_jiwa}</strong></div>}
+                                      {info.jiwa && <div style={{ fontSize: '14px' }}>{info.jiwa}</div>}
                                       <div style={{ fontSize: '15px', fontWeight: 'bold', marginTop: '2px' }}>{info.amount}</div>
                                       {info.harga && <div style={{ fontSize: '12px', color: '#444', marginTop: '2px' }}>{info.harga}</div>}
                                       {info.extra && <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>{info.extra}</div>}
@@ -238,12 +240,27 @@ export default function KwitansiZakat({ open, onOpenChange, data }: Props) {
                   <div style={{ display: 'grid', gridTemplateColumns: '58% 42%', marginTop: '24px', gap: '16px', alignItems: 'end' }}>
                     {/* Kiri: Terbilang */}
                     <div>
-                      {totalUang > 0 && (
-                        <div style={{ fontSize: '13px' }}>
-                          <span>Terbilang : </span>
-                          <strong style={{ fontStyle: 'italic' }}>{terbilang(totalUang)}</strong>
-                        </div>
-                      )}
+                      {(() => {
+                        // Calculate total value including beras equivalent
+                        const berasEquivalent = payments.reduce((s, p) => {
+                          if (!p.detail) return s;
+                          const metode = p.detail.metode_pembayaran || (p.detail.jumlah_beras > 0 ? 'beras' : 'uang');
+                          if (metode === 'beras' && (p.name === 'Zakat Fitrah' || p.name === 'Fidyah')) {
+                            const jiwa = p.detail.jumlah_jiwa || 0;
+                            const totalLiter = jiwa * LITER_PER_JIWA;
+                            const harga = p.detail.harga_beras_per_liter || 0;
+                            return s + (totalLiter * harga);
+                          }
+                          return s;
+                        }, 0);
+                        const grandTotal = totalUang + berasEquivalent;
+                        return grandTotal > 0 ? (
+                          <div style={{ fontSize: '13px' }}>
+                            <span>Terbilang : </span>
+                            <strong style={{ fontStyle: 'italic' }}>{terbilang(grandTotal)}</strong>
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
 
                     {/* Kanan: Tanggal & Tanda Tangan */}
