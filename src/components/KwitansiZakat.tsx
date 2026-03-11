@@ -189,7 +189,7 @@ export default function KwitansiZakat({ open, onOpenChange, data }: Props) {
                                   <td colSpan={7} style={{ padding: '6px 0' }}>
                                     <div style={{ fontSize: '14px' }}><strong>{p.no}. {p.name} {info.label}</strong></div>
                                     <div style={{ marginLeft: '20px', marginTop: '4px' }}>
-                                      {p.detail.jumlah_jiwa > 0 && <div style={{ fontSize: '14px' }}>Jumlah Jiwa: <strong>{p.detail.jumlah_jiwa}</strong></div>}
+                                      {info.jiwa && <div style={{ fontSize: '14px' }}>{info.jiwa}</div>}
                                       <div style={{ fontSize: '15px', fontWeight: 'bold', marginTop: '2px' }}>{info.amount}</div>
                                       {info.harga && <div style={{ fontSize: '12px', color: '#444', marginTop: '2px' }}>{info.harga}</div>}
                                       {info.extra && <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>{info.extra}</div>}
