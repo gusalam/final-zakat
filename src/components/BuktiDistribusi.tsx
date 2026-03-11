@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Printer, Download } from 'lucide-react';
 import { terbilang } from '@/lib/terbilang';
 import jsPDF from 'jspdf';

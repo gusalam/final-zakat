@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Printer, Download } from 'lucide-react';
 import { terbilang } from '@/lib/terbilang';
 import logoImg from '@/assets/logo-masjid.webp';
