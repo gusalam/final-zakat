@@ -164,10 +164,14 @@ export async function downloadKwitansiPdf(data: KwitansiData) {
         doc.text(`${p.no}. ${p.name} (${metode === 'beras' ? 'Beras' : 'Uang'})`, labelX + 4, y);
         y += 6;
 
-        if (metode === 'beras') {
+        // Always show jumlah jiwa
+        if (jiwa > 0) {
           doc.setFont('helvetica', 'normal'); doc.setFontSize(12);
           doc.text(`Jumlah Jiwa: ${jiwa}`, labelX + 10, y);
           y += 5;
+        }
+
+        if (metode === 'beras') {
           doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
           doc.text(`${totalLiter} Liter Beras`, labelX + 10, y);
           doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
@@ -185,17 +189,15 @@ export async function downloadKwitansiPdf(data: KwitansiData) {
           totalBeras += totalLiter;
           totalJiwa += jiwa;
         } else {
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(12);
-          doc.text(`Jumlah Uang: `, labelX + 10, y);
           doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
-          doc.text(`Rp ${fmt(p.detail.jumlah_uang)}`, labelX + 40, y);
+          doc.text(`Rp ${fmt(p.detail.jumlah_uang)}`, labelX + 10, y);
           totalUang += p.detail.jumlah_uang;
           totalJiwa += jiwa;
           if (hargaBeras > 0) {
             const setaraLiter = p.detail.jumlah_uang / hargaBeras;
             y += 5;
             doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
-            doc.text(`Setara Beras: ${parseFloat(setaraLiter.toFixed(2))} Liter`, labelX + 10, y);
+            doc.text(`Setara: ${parseFloat(setaraLiter.toFixed(2))} Liter Beras`, labelX + 10, y);
             y += 5;
             doc.text(`Harga Beras: Rp ${fmt(hargaBeras)} / Liter`, labelX + 10, y);
           }
