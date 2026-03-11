@@ -62,10 +62,9 @@ export default function DataZakat() {
       const jiwa = Number(detail.fitrah.jumlah_jiwa) || 1;
       const metode = detail.fitrah.metode;
       const harga = Number(detail.fitrah.harga_beras_per_liter) || 0;
-      const uangDibayar = Number(detail.fitrah.jumlah_uang) || 0;
       items.push({
         jenis_zakat: 'Zakat Fitrah', jumlah_jiwa: jiwa,
-        jumlah_uang: metode === 'uang' ? uangDibayar : 0,
+        jumlah_uang: metode === 'uang' ? jiwa * LITER_PER_JIWA * harga : 0,
         jumlah_beras: metode === 'beras' ? jiwa * LITER_PER_JIWA : 0,
         metode_pembayaran: metode, harga_beras_per_liter: harga || null,
       });
@@ -76,10 +75,9 @@ export default function DataZakat() {
       const jiwa = Number(detail.fidyah.jumlah_jiwa) || 1;
       const metode = detail.fidyah.metode;
       const harga = Number(detail.fidyah.harga_beras_per_liter) || 0;
-      const uangDibayar = Number(detail.fidyah.jumlah_uang) || 0;
       items.push({
         jenis_zakat: 'Fidyah', jumlah_jiwa: jiwa,
-        jumlah_uang: metode === 'uang' ? uangDibayar : 0,
+        jumlah_uang: metode === 'uang' ? jiwa * LITER_PER_JIWA * harga : 0,
         jumlah_beras: metode === 'beras' ? jiwa * LITER_PER_JIWA : 0,
         metode_pembayaran: metode, harga_beras_per_liter: harga || null,
       });
