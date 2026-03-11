@@ -52,10 +52,13 @@ export default function Laporan() {
       const { data: roles } = await supabase
         .from('user_roles')
         .select('user_id')
-        .in('role', ['panitia', 'admin']);
+        .eq('role', 'panitia');
       if (!roles) return;
       const userIds = roles.map(r => r.user_id);
-      if (userIds.length === 0) return;
+      if (userIds.length === 0) {
+        setPanitiaList([]);
+        return;
+      }
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, name')
