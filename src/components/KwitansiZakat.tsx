@@ -58,7 +58,8 @@ function renderFitrahFidyahInfo(d: DetailZakatItem) {
   if (metode === 'beras') {
     return {
       label: `(Beras)`,
-      amount: `${totalLiter} Liter`,
+      jiwa: jiwa > 0 ? `Jumlah Jiwa: ${jiwa}` : undefined,
+      amount: `${totalLiter} Liter Beras`,
       extra: `${jiwa} Jiwa × 3,5 Liter`,
       harga: harga > 0 ? `Harga Beras: Rp ${fmt(harga)} / Liter` : undefined,
       nilaiSetara: harga > 0 ? `Nilai Setara: Rp ${fmt(nilaiSetara)}` : undefined,
@@ -67,8 +68,9 @@ function renderFitrahFidyahInfo(d: DetailZakatItem) {
     const setaraLiter = harga > 0 ? d.jumlah_uang / harga : 0;
     return {
       label: `(Uang)`,
+      jiwa: jiwa > 0 ? `Jumlah Jiwa: ${jiwa}` : undefined,
       amount: `Rp ${fmt(d.jumlah_uang)}`,
-      extra: harga > 0 ? `Setara Beras: ${parseFloat(setaraLiter.toFixed(2))} Liter` : undefined,
+      extra: harga > 0 ? `Setara: ${parseFloat(setaraLiter.toFixed(2))} Liter Beras` : undefined,
       harga: harga > 0 ? `Harga Beras: Rp ${fmt(harga)} / Liter` : undefined,
     };
   }
