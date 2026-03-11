@@ -1,0 +1,1 @@
+ALTER TABLE public.zakat ADD COLUMN status_muzakki text DEFAULT 'RT';

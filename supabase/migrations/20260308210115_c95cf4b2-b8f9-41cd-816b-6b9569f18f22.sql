@@ -1,0 +1,1 @@
+ALTER TABLE public.transaksi_zakat ADD COLUMN alamat_muzakki text;

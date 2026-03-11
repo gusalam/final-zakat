@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS public.distribusi_mustahik_sumber_tanggal_idx;
