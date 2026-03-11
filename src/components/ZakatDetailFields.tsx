@@ -98,16 +98,12 @@ const FitrahFields = memo(function FitrahFields({
 
           {fitrah.metode === 'uang' && (
             <div>
-              <Label>Jumlah Uang Dibayar (Rp) <span className="text-destructive">*</span></Label>
+              <Label>Jumlah Uang (Rp) — otomatis dihitung</Label>
               <Input
-                type="number"
-                inputMode="numeric"
-                min="0"
-                defaultValue={fitrah.jumlah_uang}
-                key={`${idPrefix}-fitrah-uang`}
-                onBlur={e => onFieldChange('jumlah_uang', e.target.value)}
-                onChange={e => onFieldChange('jumlah_uang', e.target.value)}
-                placeholder="Contoh: 50000"
+                type="text"
+                value={harga > 0 && jiwa > 0 ? `Rp ${fmt(jiwa * LITER_PER_JIWA * harga)}` : '—'}
+                readOnly
+                className="bg-muted cursor-not-allowed"
               />
             </div>
           )}
@@ -122,9 +118,10 @@ const FitrahFields = memo(function FitrahFields({
               </>
             ) : (
               <>
-                <p>Uang dibayar: <strong>Rp {fmt(uangDibayar)}</strong></p>
-                {harga > 0 && uangDibayar > 0 && (
-                  <p>Setara beras: Rp {fmt(uangDibayar)} ÷ Rp {fmt(harga)} = <strong>{parseFloat(setaraLiter.toFixed(2))} Liter</strong></p>
+                {harga > 0 && jiwa > 0 ? (
+                  <p><strong>{jiwa}</strong> jiwa × 3,5 liter × Rp {fmt(harga)}<br/>= <strong>Rp {fmt(jiwa * LITER_PER_JIWA * harga)}</strong></p>
+                ) : (
+                  <p className="text-muted-foreground">Isi jumlah jiwa dan harga beras untuk melihat perhitungan</p>
                 )}
               </>
             )}
