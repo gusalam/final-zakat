@@ -62,7 +62,7 @@ function renderFitrahFidyahInfo(d: DetailZakatItem) {
       amount: `${totalLiter} Liter Beras`,
       extra: `${jiwa} Jiwa × 3,5 Liter`,
       harga: harga > 0 ? `Harga Beras: Rp ${fmt(harga)} / Liter` : undefined,
-      nilaiSetara: harga > 0 ? `Nilai Setara: Rp ${fmt(nilaiSetara)}` : undefined,
+      nilaiSetara: harga > 0 ? `Nilai Beras: Rp ${fmt(nilaiSetara)}` : undefined,
     };
   } else {
     const setaraLiter = harga > 0 ? d.jumlah_uang / harga : 0;
@@ -83,7 +83,7 @@ export default function KwitansiZakat({ open, onOpenChange, data }: Props) {
   useEffect(() => {
     if (data?.receipt_number) {
       const verifyUrl = `${window.location.origin}/verifikasi/${data.receipt_number}`;
-      QRCode.toDataURL(verifyUrl, { width: 120, margin: 1 }).then(setQrDataUrl).catch(() => setQrDataUrl(''));
+      QRCode.toDataURL(verifyUrl, { width: 150, margin: 1 }).then(setQrDataUrl).catch(() => setQrDataUrl(''));
     }
   }, [data?.receipt_number]);
 
@@ -91,8 +91,30 @@ export default function KwitansiZakat({ open, onOpenChange, data }: Props) {
 
   const payments = getPaymentRows(data.details);
   const totalUang = payments.reduce((s, p) => s + (p.detail?.jumlah_uang || 0), 0);
-  const totalBeras = payments.reduce((s, p) => s + (p.detail?.jumlah_beras || 0), 0);
+  const totalBeras = payments.reduce((s, p) => {
+    if (!p.detail) return s;
+    const metode = p.detail.metode_pembayaran || (p.detail.jumlah_beras > 0 ? 'beras' : 'uang');
+    if (metode === 'beras' && (p.name === 'Zakat Fitrah' || p.name === 'Fidyah')) {
+      const jiwa = p.detail.jumlah_jiwa || 0;
+      return s + (jiwa * LITER_PER_JIWA);
+    }
+    return s;
+  }, 0);
   const totalJiwa = payments.reduce((s, p) => s + (p.detail?.jumlah_jiwa || 0), 0);
+
+  // Calculate beras equivalent value for terbilang
+  const berasEquivalent = payments.reduce((s, p) => {
+    if (!p.detail) return s;
+    const metode = p.detail.metode_pembayaran || (p.detail.jumlah_beras > 0 ? 'beras' : 'uang');
+    if (metode === 'beras' && (p.name === 'Zakat Fitrah' || p.name === 'Fidyah')) {
+      const jiwa = p.detail.jumlah_jiwa || 0;
+      const totalLiter = jiwa * LITER_PER_JIWA;
+      const harga = p.detail.harga_beras_per_liter || 0;
+      return s + (totalLiter * harga);
+    }
+    return s;
+  }, 0);
+  const grandTotal = totalUang + berasEquivalent;
 
   const handlePrint = () => {
     const content = printRef.current;
@@ -102,9 +124,12 @@ export default function KwitansiZakat({ open, onOpenChange, data }: Props) {
     win.document.write(`<!DOCTYPE html><html><head><title>Kwitansi Zakat</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; }
-        @page { size: A4 landscape; margin: 0; }
-        @media print { body { margin: 0; padding: 0; } }
+        body { font-family: Arial, Helvetica, sans-serif; }
+        @page { size: A4 landscape; margin: 10mm; }
+        @media print { 
+          body { margin: 0; padding: 0; }
+          .kwitansi-page { width: 277mm !important; height: 190mm !important; }
+        }
       </style></head><body>${content.innerHTML}</body></html>`);
     win.document.close();
     win.focus();
@@ -123,6 +148,11 @@ export default function KwitansiZakat({ open, onOpenChange, data }: Props) {
 
   const dateStr = new Date(data.tanggal).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
+  // Filter active payments for grid display
+  const activePayments = payments.filter(p => p.detail);
+  const fitrahFidyahPayments = activePayments.filter(p => p.name === 'Zakat Fitrah' || p.name === 'Fidyah');
+  const otherPayments = activePayments.filter(p => p.name !== 'Zakat Fitrah' && p.name !== 'Fidyah');
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] md:max-w-5xl p-2 md:p-6 overflow-auto max-h-[90vh]">
@@ -132,142 +162,161 @@ export default function KwitansiZakat({ open, onOpenChange, data }: Props) {
         </div>
 
         <div ref={printRef}>
-          <div style={{ width: '297mm', minHeight: '210mm', padding: '8mm', boxSizing: 'border-box', fontFamily: 'Arial, sans-serif', margin: '0 auto' }}>
-            <div style={{ border: '3px solid #276749', padding: '5px', width: '100%', height: '100%' }}>
-              <div style={{ border: '1px solid #276749', display: 'grid', gridTemplateColumns: '22% 78%', minHeight: '190mm' }}>
+          <div className="kwitansi-page" style={{ width: '277mm', height: '190mm', padding: '0', boxSizing: 'border-box', fontFamily: 'Arial, Helvetica, sans-serif', margin: '0 auto', overflow: 'hidden' }}>
+            {/* Outer border */}
+            <div style={{ border: '3px solid #276749', padding: '4px', width: '100%', height: '100%', boxSizing: 'border-box' }}>
+              {/* Inner border */}
+              <div style={{ border: '1px solid #276749', display: 'grid', gridTemplateColumns: '22% 78%', width: '100%', height: '100%', boxSizing: 'border-box' }}>
+                
                 {/* Kolom Kiri - Sidebar */}
-                <div style={{ backgroundColor: '#e6f5e6', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px 12px', borderRight: '2px solid #276749' }}>
-                  <img src={logoImg} alt="Logo" style={{ width: '90px', height: '90px', marginBottom: '16px' }} />
-                  <div style={{ textAlign: 'center', color: '#276749', fontWeight: 'bold', fontSize: '14px', lineHeight: '1.5' }}>
+                <div style={{ backgroundColor: '#e6f5e6', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px 10px', borderRight: '2px solid #276749' }}>
+                  <img src={logoImg} alt="Logo" style={{ width: '80px', height: '80px', marginBottom: '14px' }} />
+                  <div style={{ textAlign: 'center', color: '#276749', fontWeight: 'bold', fontSize: '13px', lineHeight: '1.6' }}>
                     BADAN AMIL<br />ZAKAT<br />MASJID AL-IKHLAS<br />KEBON BARU
                   </div>
                   {qrDataUrl && (
-                    <div style={{ marginTop: '24px', textAlign: 'center' }}>
-                      <img src={qrDataUrl} alt="QR Verifikasi" style={{ width: '80px', height: '80px' }} />
-                      <div style={{ fontSize: '10px', color: '#666', marginTop: '6px' }}>Scan untuk verifikasi</div>
+                    <div style={{ marginTop: '20px', textAlign: 'center' }}>
+                      <img src={qrDataUrl} alt="QR Verifikasi" style={{ width: '90px', height: '90px' }} />
+                      <div style={{ fontSize: '9px', color: '#666', marginTop: '6px' }}>Scan untuk verifikasi</div>
                     </div>
                   )}
+                  <div style={{ fontSize: '9px', color: '#666', marginTop: '8px' }}>www.masjidalikhas.or.id</div>
                 </div>
 
                 {/* Kolom Kanan - Konten */}
-                <div style={{ padding: '20px 28px', fontSize: '14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div style={{ padding: '16px 24px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', overflow: 'hidden' }}>
                   {/* Top section */}
                   <div>
-                    <h2 style={{ textAlign: 'center', color: '#276749', fontWeight: 'bold', fontSize: '24px', borderBottom: '3px solid #276749', paddingBottom: '8px', marginBottom: '20px', letterSpacing: '2px' }}>
+                    {/* Title */}
+                    <h2 style={{ textAlign: 'center', color: '#276749', fontWeight: 'bold', fontSize: '28px', borderBottom: '3px solid #276749', paddingBottom: '6px', marginBottom: '14px', letterSpacing: '3px', fontFamily: 'Arial, Helvetica, sans-serif' }}>
                       KWITANSI ZAKAT
                     </h2>
 
                     {/* Info Muzakki */}
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', marginBottom: '16px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '16px', marginBottom: '12px', lineHeight: '1.6' }}>
                       <tbody>
-                        <tr><td style={{ width: '140px', padding: '4px 0', verticalAlign: 'top' }}>No. Kwitansi</td><td style={{ width: '12px', verticalAlign: 'top' }}>:</td><td><strong style={{ border: '1px solid #ccc', padding: '2px 10px', fontSize: '14px' }}>{data.receipt_number || data.nomor}</strong></td></tr>
-                        <tr><td style={{ padding: '4px 0' }}>Nama Muzakki</td><td>:</td><td><strong style={{ fontSize: '15px' }}>{data.nama_muzakki}</strong></td></tr>
+                        <tr>
+                          <td style={{ width: '150px', padding: '3px 0', fontWeight: 'bold' }}>No. Kwitansi</td>
+                          <td style={{ width: '14px' }}>:</td>
+                          <td><strong>{data.receipt_number || data.nomor}</strong></td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: '3px 0' }}>Nama Muzakki</td>
+                          <td>:</td>
+                          <td><strong style={{ fontSize: '17px' }}>{data.nama_muzakki}</strong></td>
+                        </tr>
                         {data.status_muzakki && (
-                          <tr><td style={{ padding: '4px 0' }}>Status</td><td>:</td><td><strong>{data.status_muzakki}</strong></td></tr>
+                          <tr>
+                            <td style={{ padding: '3px 0' }}>Status</td>
+                            <td>:</td>
+                            <td><strong>{data.status_muzakki}</strong></td>
+                          </tr>
                         )}
                         {data.rt_nama && (
-                          <tr><td style={{ padding: '4px 0' }}>RT</td><td>:</td><td><strong>{data.rt_nama}</strong></td></tr>
+                          <tr>
+                            <td style={{ padding: '3px 0' }}>RT</td>
+                            <td>:</td>
+                            <td><strong>{data.rt_nama}</strong></td>
+                          </tr>
                         )}
                         {data.alamat_muzakki && (
-                          <tr><td style={{ padding: '4px 0' }}>Alamat</td><td>:</td><td>{data.alamat_muzakki}</td></tr>
+                          <tr>
+                            <td style={{ padding: '3px 0' }}>Alamat</td>
+                            <td>:</td>
+                            <td>{data.alamat_muzakki}</td>
+                          </tr>
                         )}
                       </tbody>
                     </table>
 
                     {/* Detail Pembayaran */}
-                    <div style={{ marginTop: '12px' }}>
-                      <div style={{ marginBottom: '8px', fontSize: '14px', fontWeight: 'bold' }}>Untuk Pembayaran :</div>
-                      <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
-                        <tbody>
-                          {payments.map(p => {
-                            if (!p.detail) return null;
-                            const isFitrahFidyah = p.name === 'Zakat Fitrah' || p.name === 'Fidyah';
-                            if (isFitrahFidyah) {
-                              const info = renderFitrahFidyahInfo(p.detail);
-                              return (
-                                <tr key={p.no}>
-                                  <td colSpan={7} style={{ padding: '6px 0' }}>
-                                    <div style={{ fontSize: '14px' }}><strong>{p.no}. {p.name} {info.label}</strong></div>
-                                    <div style={{ marginLeft: '20px', marginTop: '4px' }}>
-                                      {info.jiwa && <div style={{ fontSize: '14px' }}>{info.jiwa}</div>}
-                                      <div style={{ fontSize: '15px', fontWeight: 'bold', marginTop: '2px' }}>{info.amount}</div>
-                                      {info.harga && <div style={{ fontSize: '12px', color: '#444', marginTop: '2px' }}>{info.harga}</div>}
-                                      {info.extra && <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>{info.extra}</div>}
-                                      {info.nilaiSetara && <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#276749', marginTop: '2px' }}>{info.nilaiSetara}</div>}
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            }
+                    <div style={{ marginTop: '8px' }}>
+                      <div style={{ marginBottom: '6px', fontSize: '16px', fontWeight: 'bold', borderBottom: '1px solid #ccc', paddingBottom: '4px' }}>
+                        Untuk Pembayaran :
+                      </div>
+
+                      {/* Fitrah/Fidyah in grid */}
+                      {fitrahFidyahPayments.length > 0 && (
+                        <div style={{ display: 'grid', gridTemplateColumns: fitrahFidyahPayments.length > 1 ? '1fr 1fr' : '1fr', gap: '12px', marginBottom: '8px' }}>
+                          {fitrahFidyahPayments.map(p => {
+                            const info = renderFitrahFidyahInfo(p.detail!);
                             return (
-                              <tr key={p.no}>
-                                <td style={{ width: '20px', padding: '4px 0', fontSize: '14px' }}>{p.no}</td>
-                                <td style={{ width: '110px', fontSize: '14px' }}>{p.name}</td>
-                                <td style={{ width: '60px', fontSize: '14px' }}>Uang :</td>
-                                <td style={{ width: '30px', fontWeight: 'bold', fontSize: '14px' }}>{p.detail.jumlah_uang > 0 ? 'Rp' : ''}</td>
-                                <td style={{ fontWeight: 'bold', fontSize: '15px' }}>{p.detail.jumlah_uang > 0 ? fmt(p.detail.jumlah_uang) : ''}</td>
-                              </tr>
+                              <div key={p.no} style={{ border: '1px solid #ddd', padding: '10px 12px', borderRadius: '4px' }}>
+                                <div style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '6px' }}>
+                                  {p.no}. {p.name} {info.label}
+                                </div>
+                                {info.jiwa && <div style={{ fontSize: '15px', marginBottom: '3px' }}>{info.jiwa}</div>}
+                                <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '3px' }}>{info.amount}</div>
+                                {info.extra && <div style={{ fontSize: '14px', color: '#444', marginBottom: '2px' }}>{info.extra}</div>}
+                                {info.harga && <div style={{ fontSize: '14px', color: '#444', marginBottom: '2px' }}>{info.harga}</div>}
+                                {info.nilaiSetara && <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#276749' }}>{info.nilaiSetara}</div>}
+                              </div>
                             );
                           })}
-                        </tbody>
-                      </table>
+                        </div>
+                      )}
+
+                      {/* Other payments */}
+                      {otherPayments.length > 0 && (
+                        <table style={{ width: '100%', fontSize: '15px', borderCollapse: 'collapse' }}>
+                          <tbody>
+                            {otherPayments.map(p => (
+                              <tr key={p.no}>
+                                <td style={{ width: '24px', padding: '4px 0' }}>{p.no}.</td>
+                                <td style={{ width: '120px' }}>{p.name}</td>
+                                <td style={{ width: '60px' }}>Uang :</td>
+                                <td style={{ fontWeight: 'bold', fontSize: '16px' }}>
+                                  {p.detail!.jumlah_uang > 0 ? `Rp ${fmt(p.detail!.jumlah_uang)}` : ''}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
                     </div>
 
                     {/* Totals */}
-                    <div style={{ marginTop: '16px', borderTop: '1px solid #ddd', paddingTop: '12px' }}>
+                    <div style={{ marginTop: '10px', borderTop: '2px solid #276749', paddingTop: '10px' }}>
                       {totalJiwa > 0 && (
-                        <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '4px' }}>
-                          <span style={{ fontWeight: 'normal' }}>Jumlah Total Jiwa : </span>
-                          <span style={{ marginLeft: '20px' }}>{totalJiwa} Jiwa</span>
+                        <div style={{ fontSize: '18px', marginBottom: '4px', lineHeight: '1.6' }}>
+                          <span>Jumlah Total Jiwa : </span>
+                          <strong style={{ marginLeft: '12px' }}>{totalJiwa} Jiwa</strong>
                         </div>
                       )}
                       {totalUang > 0 && (
-                        <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '4px' }}>
-                          <span style={{ fontWeight: 'normal' }}>Jumlah Total (Uang) : </span>
-                          <span style={{ marginLeft: '20px' }}>Rp {fmt(totalUang)}</span>
+                        <div style={{ fontSize: '18px', marginBottom: '4px', lineHeight: '1.6' }}>
+                          <span>Jumlah Total (Uang) : </span>
+                          <strong style={{ marginLeft: '12px' }}>Rp {fmt(totalUang)}</strong>
                         </div>
                       )}
                       {totalBeras > 0 && (
-                        <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
-                          <span style={{ fontWeight: 'normal' }}>Jumlah Total Beras : </span>
-                          <span style={{ marginLeft: '20px' }}>{totalBeras} Liter</span>
+                        <div style={{ fontSize: '18px', lineHeight: '1.6' }}>
+                          <span>Jumlah Total Beras : </span>
+                          <strong style={{ marginLeft: '12px' }}>{totalBeras} Liter</strong>
                         </div>
                       )}
                     </div>
                   </div>
 
                   {/* Bottom section: Terbilang & Tanda Tangan */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '58% 42%', marginTop: '24px', gap: '16px', alignItems: 'end' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '58% 42%', marginTop: '14px', gap: '12px', alignItems: 'end' }}>
                     {/* Kiri: Terbilang */}
                     <div>
-                      {(() => {
-                        // Calculate total value including beras equivalent
-                        const berasEquivalent = payments.reduce((s, p) => {
-                          if (!p.detail) return s;
-                          const metode = p.detail.metode_pembayaran || (p.detail.jumlah_beras > 0 ? 'beras' : 'uang');
-                          if (metode === 'beras' && (p.name === 'Zakat Fitrah' || p.name === 'Fidyah')) {
-                            const jiwa = p.detail.jumlah_jiwa || 0;
-                            const totalLiter = jiwa * LITER_PER_JIWA;
-                            const harga = p.detail.harga_beras_per_liter || 0;
-                            return s + (totalLiter * harga);
-                          }
-                          return s;
-                        }, 0);
-                        const grandTotal = totalUang + berasEquivalent;
-                        return grandTotal > 0 ? (
-                          <div style={{ fontSize: '13px' }}>
-                            <span>Terbilang : </span>
-                            <strong style={{ fontStyle: 'italic' }}>{terbilang(grandTotal)}</strong>
-                          </div>
-                        ) : null;
-                      })()}
+                      {grandTotal > 0 && (
+                        <div style={{ fontSize: '16px', lineHeight: '1.5' }}>
+                          <span style={{ color: '#276749', fontWeight: 'bold' }}>Terbilang: </span>
+                          <strong style={{ fontStyle: 'italic' }}>{terbilang(grandTotal)}</strong>
+                        </div>
+                      )}
                     </div>
 
                     {/* Kanan: Tanggal & Tanda Tangan */}
-                    <div style={{ textAlign: 'center', fontSize: '14px' }}>
+                    <div style={{ textAlign: 'center', fontSize: '16px' }}>
                       <div>Jakarta, {dateStr}</div>
-                      <div style={{ marginTop: '6px' }}>Penerima,</div>
-                      <div style={{ marginTop: '50px', fontWeight: 'bold', borderBottom: '1px solid #000', display: 'inline-block', paddingBottom: '2px' }}>{data.penerima}</div>
+                      <div style={{ marginTop: '4px' }}>Penerima,</div>
+                      <div style={{ marginTop: '40px', fontWeight: 'bold', borderBottom: '1px solid #000', display: 'inline-block', paddingBottom: '2px' }}>
+                        {data.penerima || '(                    )'}
+                      </div>
                     </div>
                   </div>
                 </div>
