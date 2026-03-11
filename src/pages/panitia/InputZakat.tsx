@@ -129,10 +129,9 @@ export default function InputZakat() {
       const jiwa = Number(detail.fidyah.jumlah_jiwa) || 1;
       const metode = detail.fidyah.metode;
       const harga = Number(detail.fidyah.harga_beras_per_liter) || 0;
-      const uangDibayar = Number(detail.fidyah.jumlah_uang) || 0;
       items.push({
         jenis_zakat: 'Fidyah',
-        jumlah_uang: metode === 'uang' ? uangDibayar : 0,
+        jumlah_uang: metode === 'uang' ? jiwa * LITER_PER_JIWA * harga : 0,
         jumlah_beras: metode === 'beras' ? jiwa * LITER_PER_JIWA : 0,
         jumlah_jiwa: jiwa,
         metode_pembayaran: metode,
