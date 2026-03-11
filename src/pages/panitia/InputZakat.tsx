@@ -135,7 +135,7 @@ export default function InputZakat() {
         jenis_zakat: 'Fidyah',
         jumlah_uang: metode === 'uang' ? uangDibayar : 0,
         jumlah_beras: metode === 'beras' ? jiwa * LITER_PER_JIWA : 0,
-        jumlah_jiwa: metode === 'beras' ? jiwa : 0,
+        jumlah_jiwa: jiwa,
         metode_pembayaran: metode,
         harga_beras_per_liter: harga || null,
       });
